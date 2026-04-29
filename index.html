@@ -274,7 +274,7 @@
                 try {
                     const response = await fetch(url, options);
                     const result = await response.json();
-                    if (!response.ok) throw new Error(result.error?.message || "API Error");
+                    if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status} Error`);
                     return result;
                 } catch (err) {
                     if (i === retries - 1) throw err;
@@ -297,7 +297,7 @@
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
-                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -315,8 +315,8 @@
                         textarea.value += (textarea.value ? "\n\n" : "") + text.trim();
                     }
                 } catch (err) { 
-                    console.error(err); 
-                    alert("Transcription failed. Please try a clearer photo (JPEG or PNG).");
+                    console.error("Transcription Error: ", err); 
+                    alert(`Transcription failed: ${err.message}`);
                 } finally {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
@@ -333,7 +333,7 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -345,7 +345,7 @@
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
-                document.getElementById('feedbackContent').innerText = "An error occurred. Please check your connection or API key.";
+                document.getElementById('feedbackContent').innerText = `API Error: ${err.message}\n\nPlease check your internet connection and verify that your API key is active.`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
