@@ -344,14 +344,15 @@
         }
 
         // ==========================================
-        // INDESTRUCTIBLE RAW FETCH LOOP - WITH SMARTER QUOTA DETECTION
+        // INDESTRUCTIBLE RAW FETCH LOOP - FIXED QUOTA & 403 LOGIC
         // ==========================================
         async function generateContentWithRetry(promptText, imageBase64 = null, imageMimeType = null) {
-            // Using the most stable standard models listed in your diagnostic
+            // Using explicit stable models to prevent alias routing errors
             const modelsToTry = [
                 "gemini-2.5-flash",
-                "gemini-2.0-flash",
-                "gemini-2.5-pro"
+                "gemini-2.0-flash-001",
+                "gemini-2.5-pro",
+                "gemini-2.5-flash-lite"
             ];
 
             let lastErrorMsg = "";
@@ -389,49 +390,47 @@
                         const errorMsg = result.error?.message || `HTTP ${response.status}`;
                         lastErrorMsg = `[${model}] Error: ${errorMsg}`;
                         
-                        // Handle Specific Server Status Codes & Quota Issues
-                        if (response.status === 429 || errorMsg.toLowerCase().includes("quota")) {
-                            
-                            // FALSE ALARM CHECK: 
-                            // Google sets limit:0 on certain regions/models on the Free Tier.
-                            // BUT if it specifically tells us to "retry in", it is a true rate limit!
-                            if (errorMsg.includes("limit: 0") && !errorMsg.toLowerCase().includes("retry in")) {
-                                console.warn(`Model ${model} is disabled on the free tier (limit: 0). Skipping to next fallback model.`);
-                                break; // Breaks out of the retry loop, moves to the next model in the list
-                            } else {
-                                // This is a legitimate 15 requests per minute limit hit
-                                throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.\n\nPlease wait about 60 seconds and try again.");
-                            }
-                            
-                        } else if (response.status === 503) {
+                        // HTTP 403: Forbidden. Hard security block (e.g. Website Restrictions missing the current URL)
+                        if (response.status === 403) {
+                            throw new Error("ACCESS DENIED (403 Forbidden).<br><br>Google blocked this request. If you added 'Website Restrictions' to your API key in Google Cloud Console, make sure you are accessing this tool from that exact website (e.g., your GitHub Pages link). It will not work if you open the file directly from your computer (file:///).<br><br>To verify, temporarily set the restriction to 'None' in Google Cloud Console.");
+                        }
+                        // HTTP 429: True "Rate Limit Exceeded" status code from Google
+                        else if (response.status === 429) {
+                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.<br><br>Please wait about 60 seconds and try again.");
+                        } 
+                        // HTTP 503: Server Overload (Traffic Spike). Retry gracefully.
+                        else if (response.status === 503) {
                             console.log(`Traffic spike on ${model}. Retrying in 2 seconds...`);
                             await new Promise(resolve => setTimeout(resolve, 2000));
                             retries--;
                             continue;
-                        } else if (response.status === 404 || response.status === 400) {
-                            break; // Skip to next model
-                        } else {
-                            break; // Skip to next model
+                        } 
+                        // Any other error (404 Not Found, 400 Bad Request) -> Skip to next model
+                        else {
+                            console.warn(`Skipping ${model} due to error: ${response.status} ${errorMsg}`);
+                            break; // Breaks the while loop, moves to the next model in the for loop
                         }
 
                     } catch (e) {
-                        // Pass our friendly classroom quota error straight through to the student
-                        if (e.message.includes("Too many students")) {
+                        // Pass known custom errors up to the user immediately
+                        if (e.message.includes("ACCESS DENIED") || e.message.includes("Too many students")) {
                             throw e;
                         }
+                        
+                        // False alarm quota catch for the limit:0 bug
+                        if (e.message.toLowerCase().includes("quota") && !e.message.includes("limit: 0")) {
+                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.<br><br>Please wait about 60 seconds and try again.");
+                        }
+
                         lastErrorMsg = `[${model}] Network/Fetch Error: ${e.message}`;
                         console.error(lastErrorMsg);
-                        break; 
+                        break; // Move to next model
                     }
                 }
             }
             
-            // Final Safety Net: If all loops exhaust and the very last error was a quota/limit issue, show the friendly message.
-            if (lastErrorMsg.toLowerCase().includes("quota") || lastErrorMsg.includes("429") || lastErrorMsg.includes("limit: 0")) {
-                throw new Error("The free classroom AI limit has been reached, or the models are temporarily at capacity.\n\nPlease wait about 60 seconds and try again.");
-            }
-
-            throw new Error(lastErrorMsg);
+            // If the loop completely finishes and we are down here, all available fallback models failed.
+            throw new Error(`All models failed to respond.<br>Last Error: ${lastErrorMsg}`);
         }
 
         async function handleImageUpload(e) {
@@ -458,7 +457,7 @@
                     }
                 } catch (err) { 
                     console.error(err);
-                    document.getElementById('feedbackContent').innerHTML = `<strong>UPLOAD PAUSED</strong><br><br>${err.message}`;
+                    document.getElementById('feedbackContent').innerHTML = `<strong>UPLOAD ERROR</strong><br><br>${err.message}`;
                     document.getElementById('feedbackBox').classList.remove('hidden');
                     document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
                 } finally {
@@ -498,7 +497,7 @@
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
                 console.error(err);
-                document.getElementById('feedbackContent').innerHTML = `<strong>MARKING PAUSED</strong><br><br>${err.message}`;
+                document.getElementById('feedbackContent').innerHTML = `<strong>MARKING ERROR</strong><br><br>${err.message}`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
