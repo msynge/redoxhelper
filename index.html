@@ -309,7 +309,7 @@
         function updateUI() {
             const data = scenarios[currentScenario][currentCellType];
             document.getElementById('current-title').innerText = `Scenario ${currentScenario}`;
-            document.getElementById('cell-indicator').innerText = currentCellType.charAt(0).toUpperCase() + currentCellType.slice(1) + " Cell";
+            document.getElementById('cell-indicator').currentCellType = currentCellType.charAt(0).toUpperCase() + currentCellType.slice(1) + " Cell";
             document.getElementById('task-prompt').innerHTML = data.prompt;
             document.getElementById('obs-pattern').innerText = `"${data.obs}"`;
             
@@ -344,13 +344,15 @@
         }
 
         // ==========================================
-        // INDESTRUCTIBLE RAW FETCH LOOP - FIXED QUOTA & 403 LOGIC
+        // INDESTRUCTIBLE RAW FETCH LOOP - RE-WIRED QUOTA LOGIC
         // ==========================================
         async function generateContentWithRetry(promptText, imageBase64 = null, imageMimeType = null) {
-            // Using explicit stable models to prevent alias routing errors
+            // Using explicit stable models to prevent alias routing errors. 
+            // 1.5-flash added back as the most robust baseline.
             const modelsToTry = [
                 "gemini-2.5-flash",
                 "gemini-2.0-flash-001",
+                "gemini-1.5-flash",
                 "gemini-2.5-pro",
                 "gemini-2.5-flash-lite"
             ];
@@ -390,38 +392,41 @@
                         const errorMsg = result.error?.message || `HTTP ${response.status}`;
                         lastErrorMsg = `[${model}] Error: ${errorMsg}`;
                         
-                        // HTTP 403: Forbidden. Hard security block (e.g. Website Restrictions missing the current URL)
+                        // HTTP 403: Forbidden. Hard security block
                         if (response.status === 403) {
-                            throw new Error("ACCESS DENIED (403 Forbidden).<br><br>Google blocked this request. If you added 'Website Restrictions' to your API key in Google Cloud Console, make sure you are accessing this tool from that exact website (e.g., your GitHub Pages link). It will not work if you open the file directly from your computer (file:///).<br><br>To verify, temporarily set the restriction to 'None' in Google Cloud Console.");
+                            throw new Error("ACCESS DENIED (403 Forbidden).<br><br>Google blocked this request. Check your Website Restrictions in the Google Cloud Console.");
                         }
-                        // HTTP 429: True "Rate Limit Exceeded" status code from Google
-                        else if (response.status === 429) {
-                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.<br><br>Please wait about 60 seconds and try again.");
-                        } 
+                        
+                        // Check for Rate Limit or Quota
+                        if (response.status === 429 || errorMsg.toLowerCase().includes("quota")) {
+                            // Does it say limit: 0? If so, it's a false alarm / blocked tier. Skip it!
+                            if (errorMsg.includes("limit: 0") && !errorMsg.toLowerCase().includes("retry in")) {
+                                console.warn(`Skipping ${model} due to free tier limit: 0 restriction.`);
+                                break; // Breaks the WHILE loop, moves to the next model in the FOR loop.
+                            } else {
+                                // It is a legitimate 15 requests per minute limit hit
+                                throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.<br><br>Please wait about 60 seconds and try again.");
+                            }
+                        }
+                        
                         // HTTP 503: Server Overload (Traffic Spike). Retry gracefully.
-                        else if (response.status === 503) {
+                        if (response.status === 503) {
                             console.log(`Traffic spike on ${model}. Retrying in 2 seconds...`);
                             await new Promise(resolve => setTimeout(resolve, 2000));
                             retries--;
                             continue;
                         } 
+                        
                         // Any other error (404 Not Found, 400 Bad Request) -> Skip to next model
-                        else {
-                            console.warn(`Skipping ${model} due to error: ${response.status} ${errorMsg}`);
-                            break; // Breaks the while loop, moves to the next model in the for loop
-                        }
+                        console.warn(`Skipping ${model} due to error: ${response.status} ${errorMsg}`);
+                        break; 
 
                     } catch (e) {
                         // Pass known custom errors up to the user immediately
                         if (e.message.includes("ACCESS DENIED") || e.message.includes("Too many students")) {
-                            throw e;
+                            throw e; // Throws directly to the outer try/catch block
                         }
                         
-                        // False alarm quota catch for the limit:0 bug
-                        if (e.message.toLowerCase().includes("quota") && !e.message.includes("limit: 0")) {
-                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.<br><br>Please wait about 60 seconds and try again.");
-                        }
-
                         lastErrorMsg = `[${model}] Network/Fetch Error: ${e.message}`;
                         console.error(lastErrorMsg);
                         break; // Move to next model
@@ -429,8 +434,8 @@
                 }
             }
             
-            // If the loop completely finishes and we are down here, all available fallback models failed.
-            throw new Error(`All models failed to respond.<br>Last Error: ${lastErrorMsg}`);
+            // If the loop completely finishes without returning, all models failed.
+            throw new Error(`All AI models are currently restricted or unavailable.<br><br>Technical Details: ${lastErrorMsg}`);
         }
 
         async function handleImageUpload(e) {
