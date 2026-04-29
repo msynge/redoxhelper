@@ -344,11 +344,11 @@
         }
 
         // ==========================================
-        // SINGLE MODEL FETCH - GEMINI 1.5 FLASH (MAX STABILITY)
+        // SINGLE MODEL FETCH - GEMINI 2.5 FLASH
         // ==========================================
         async function generateContent(promptText, imageBase64 = null, imageMimeType = null) {
-            // We use ONLY gemini-1.5-flash. It has the largest free tier limit and prevents the limit:0 bug on newer models.
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            // Updated to explicitly use gemini-2.5-flash as your key supports it and 1.5-flash returned 404
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
             let parts = [{ text: promptText }];
             if (imageBase64 && imageMimeType) {
