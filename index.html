@@ -394,8 +394,8 @@
                             
                             // FALSE ALARM CHECK: 
                             // Google sets limit:0 on certain regions/models on the Free Tier.
-                            // This is a hard block, not a rate limit. We must ignore it and skip to the next model.
-                            if (errorMsg.includes("limit: 0")) {
+                            // BUT if it specifically tells us to "retry in", it is a true rate limit!
+                            if (errorMsg.includes("limit: 0") && !errorMsg.toLowerCase().includes("retry in")) {
                                 console.warn(`Model ${model} is disabled on the free tier (limit: 0). Skipping to next fallback model.`);
                                 break; // Breaks out of the retry loop, moves to the next model in the list
                             } else {
@@ -426,6 +426,11 @@
                 }
             }
             
+            // Final Safety Net: If all loops exhaust and the very last error was a quota/limit issue, show the friendly message.
+            if (lastErrorMsg.toLowerCase().includes("quota") || lastErrorMsg.includes("429") || lastErrorMsg.includes("limit: 0")) {
+                throw new Error("The free classroom AI limit has been reached, or the models are temporarily at capacity.\n\nPlease wait about 60 seconds and try again.");
+            }
+
             throw new Error(lastErrorMsg);
         }
 
