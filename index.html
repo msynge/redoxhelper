@@ -149,20 +149,19 @@
                 </div>
 
                 <div id="feedbackBox" class="hidden animate-in fade-in slide-in-from-top-2">
-            <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
-                <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
+                    <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
+                        <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-</div>
-</div>
 
-<script>
-// Update this variable with the BRAND NEW key you generate in Google AI Studio
-const apiKey = "AIzaSyA81sNPZXbzFzjNvnx-upkhONBiUIik1pU"; 
+    <script>
+        const apiKey = "AIzaSyA81sNPZXbzFzjNvnx-upkhONBiUIik1pU"; 
 
-let currentScenario = 'A';
-let currentCellType = 'electrolytic';
+        let currentScenario = 'A';
+        let currentCellType = 'electrolytic';
 
         const scenarios = {
             A: {
@@ -301,20 +300,68 @@ let currentCellType = 'electrolytic';
             document.getElementById('guidance-content').classList.toggle('hidden');
         }
 
-        async function fetchWithRetry(url, options, retries = 5) {
-            let delay = 1000;
-            for (let i = 0; i < retries; i++) {
+        // The Smart Fallback Logic: Tests multiple API models until one succeeds.
+        async function fetchWithSmartFallback(payload, isImageTask = false) {
+            // Ordered list of models to try. 
+            // gemini-1.5-flash-8b and gemini-1.0-pro-vision are added for maximum compatibility with older keys.
+            const modelsToTry = [
+                "gemini-2.5-flash", 
+                "gemini-1.5-flash", 
+                "gemini-1.5-flash-latest", 
+                "gemini-1.5-flash-8b", 
+                "gemini-1.0-pro"
+            ];
+            
+            const imageModelsToTry = [
+                "gemini-2.5-flash", 
+                "gemini-1.5-flash", 
+                "gemini-1.5-flash-latest",
+                "gemini-1.5-flash-8b", 
+                "gemini-1.0-pro-vision"
+            ];
+
+            const targetModels = isImageTask ? imageModelsToTry : modelsToTry;
+            let lastErrorMsg = "";
+
+            for (const model of targetModels) {
                 try {
-                    const response = await fetch(url, options);
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                    
+                    // The 1.0 legacy models don't support systemInstruction. We strip it if necessary.
+                    let currentPayload = JSON.parse(JSON.stringify(payload)); 
+                    if (model === "gemini-1.0-pro" || model === "gemini-1.0-pro-vision") {
+                        if (currentPayload.systemInstruction) {
+                            const sysText = currentPayload.systemInstruction.parts[0].text;
+                            currentPayload.contents[0].parts.unshift({ text: `[System Instructions: ${sysText}]\n\n` });
+                            delete currentPayload.systemInstruction;
+                        }
+                    }
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(currentPayload)
+                    });
+                    
                     const result = await response.json();
-                    if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status} Error`);
-                    return result;
+                    
+                    if (response.ok) {
+                        return result; // Success! Return immediately.
+                    } else {
+                        lastErrorMsg = result.error?.message || `HTTP ${response.status}`;
+                        console.warn(`Model ${model} rejected:`, lastErrorMsg);
+                        
+                        // If it's an explicit API key invalid error, don't bother trying other models
+                        if (lastErrorMsg.includes("API key not valid")) {
+                            throw new Error("Your API key is invalid. Please generate a new one in Google AI Studio.");
+                        }
+                    }
                 } catch (err) {
-                    if (i === retries - 1) throw err;
-                    await new Promise(res => setTimeout(res, delay));
-                    delay *= 2;
+                    lastErrorMsg = err.message;
+                    if (err.message.includes("API key is invalid")) throw err;
                 }
             }
+            throw new Error(`All available AI models failed. Last error: ${lastErrorMsg}`);
         }
 
         async function handleImageUpload(e) {
@@ -330,18 +377,16 @@ let currentCellType = 'electrolytic';
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
-                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [
-                                    { text: "Transcribe the handwritten chemistry text exactly. Ensure chemical formulas are preserved." },
-                                    { inlineData: { mimeType: file.type, data: base64Data } }
-                                ]
-                            }]
-                        })
-                    });
+                    const payload = {
+                        contents: [{
+                            parts: [
+                                { text: "Transcribe the handwritten chemistry text exactly. Ensure chemical formulas are preserved." },
+                                { inlineData: { mimeType: file.type, data: base64Data } }
+                            ]
+                        }]
+                    };
+                    
+                    const result = await fetchWithSmartFallback(payload, true);
                     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (text) {
                         const textarea = document.getElementById('userInput');
@@ -349,7 +394,7 @@ let currentCellType = 'electrolytic';
                     }
                 } catch (err) { 
                     console.error("Transcription Error: ", err); 
-                    alert(`Transcription failed: ${err.message}\n\nPlease check your Google AI Studio API key.`);
+                    alert(`Transcription failed: ${err.message}\n\nPlease check your Google AI Studio account.`);
                 } finally {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
@@ -366,19 +411,17 @@ let currentCellType = 'electrolytic';
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: `Student Report: ${text}\n\nScenario: ${currentScenario} ${currentCellType}\nContext: ${scenarios[currentScenario][currentCellType].prompt}` }] }],
-                        systemInstruction: { parts: [{ text: "Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging." }] }
-                    })
-                });
+                const payload = {
+                    contents: [{ parts: [{ text: `Student Report: ${text}\n\nScenario: ${currentScenario} ${currentCellType}\nContext: ${scenarios[currentScenario][currentCellType].prompt}` }] }],
+                    systemInstruction: { parts: [{ text: "Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging." }] }
+                };
+
+                const result = await fetchWithSmartFallback(payload, false);
                 document.getElementById('feedbackContent').innerText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
-                document.getElementById('feedbackContent').innerText = `API Error: ${err.message}\n\nPlease check your internet connection and verify that your API key is active.`;
+                document.getElementById('feedbackContent').innerText = `API Error: ${err.message}\n\nPlease verify that your API key is active.`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
