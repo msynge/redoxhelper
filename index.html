@@ -6,12 +6,26 @@
     <title>NCEA 3.7 Redox Tutor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.0/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
         .loader { border-top-color: #3b82f6; animation: spinner 0.6s linear infinite; }
         @keyframes spinner { to { transform: rotate(360deg); } }
         .guidance-red { background-color: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        
+        /* Enhanced Markdown Formatting for Feedback */
+        #feedbackContent p { margin-bottom: 0.75rem; }
+        #feedbackContent h1, #feedbackContent h2, #feedbackContent h3 { font-weight: bold; color: #1e293b; margin-top: 1rem; margin-bottom: 0.5rem; }
+        #feedbackContent ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+        #feedbackContent ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1rem; }
+        #feedbackContent li { 
+            color: #0369a1; /* Distinct blue color for feedback points */
+            margin-bottom: 0.75rem; /* Ensures each point is clearly on its own line */
+            line-height: 1.5;
+        }
+        #feedbackContent li strong { color: #0284c7; font-weight: 700; }
+        #feedbackContent strong { font-weight: 700; color: #0f172a; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-12">
@@ -150,7 +164,7 @@
 
                 <div id="feedbackBox" class="hidden animate-in fade-in slide-in-from-top-2">
                     <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
+                        <div id="feedbackContent" class="p-5 text-slate-700 text-sm leading-relaxed"></div>
                     </div>
                 </div>
             </div>
@@ -162,6 +176,14 @@
 
         let currentScenario = 'A';
         let currentCellType = 'electrolytic';
+
+        // Store drafts for each scenario and cell type independently
+        const userDrafts = {
+            A: { electrolytic: '', electrochemical: '' },
+            B: { electrolytic: '', electrochemical: '' },
+            C: { electrolytic: '', electrochemical: '' },
+            D: { electrolytic: '', electrochemical: '' }
+        };
 
         const scenarios = {
             A: {
@@ -253,14 +275,35 @@
             }
         }
 
+        function saveCurrentDraft() {
+            const textarea = document.getElementById('userInput');
+            if (textarea) {
+                userDrafts[currentScenario][currentCellType] = textarea.value;
+            }
+        }
+
+        function loadCurrentDraft() {
+            const textarea = document.getElementById('userInput');
+            if (textarea) {
+                textarea.value = userDrafts[currentScenario][currentCellType] || '';
+            }
+            // Clear feedback when switching contexts so old feedback isn't confusing
+            document.getElementById('feedbackBox').classList.add('hidden');
+            document.getElementById('feedbackContent').innerHTML = '';
+        }
+
         function setScenario(id) {
+            saveCurrentDraft();
             currentScenario = id;
             updateUI();
+            loadCurrentDraft();
         }
 
         function setCellType(type) {
+            saveCurrentDraft();
             currentCellType = type;
             updateUI();
+            loadCurrentDraft();
         }
 
         function updateUI() {
@@ -399,7 +442,7 @@
                     }
                 } catch (err) { 
                     console.error(err);
-                    document.getElementById('feedbackContent').innerText = `UPLOAD PAUSED\n\n${err.message}`;
+                    document.getElementById('feedbackContent').innerHTML = `<strong>UPLOAD PAUSED</strong><br><br>${err.message}`;
                     document.getElementById('feedbackBox').classList.remove('hidden');
                     document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
                 } finally {
@@ -420,6 +463,10 @@
             try {
                 const combinedPrompt = `You are an Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging.
 
+                IMPORTANT FORMATTING:
+                - Provide an overall grade and general comments first.
+                - Then, provide specific actionable feedback points as a bulleted list.
+
                 Student Report:
                 ${text}
 
@@ -429,12 +476,13 @@
 
                 const resultText = await generateContentWithRetry(combinedPrompt);
                 
-                document.getElementById('feedbackContent').innerText = resultText;
+                // Parse the AI's markdown into proper HTML with styled bullet points
+                document.getElementById('feedbackContent').innerHTML = marked.parse(resultText);
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
                 console.error(err);
-                document.getElementById('feedbackContent').innerText = `MARKING PAUSED\n\n${err.message}`;
+                document.getElementById('feedbackContent').innerHTML = `<strong>MARKING PAUSED</strong><br><br>${err.message}`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
@@ -445,12 +493,14 @@
 
         function resetApp() {
             document.getElementById('userInput').value = '';
+            userDrafts[currentScenario][currentCellType] = ''; // Clear from memory as well
             document.getElementById('feedbackBox').classList.add('hidden');
         }
 
         // Initialize Icons and UI
         window.addEventListener('DOMContentLoaded', () => {
             updateUI();
+            loadCurrentDraft(); // Load initial state
             const iconInterval = setInterval(() => {
                 if (window.lucide) {
                     window.lucide.createIcons();
