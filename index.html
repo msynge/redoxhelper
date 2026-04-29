@@ -149,19 +149,20 @@
                 </div>
 
                 <div id="feedbackBox" class="hidden animate-in fade-in slide-in-from-top-2">
-                    <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
-                    </div>
-                </div>
+            <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
+                <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
             </div>
         </div>
     </div>
+</div>
+</div>
 
-    <script>
-        const apiKey = "AIzaSyA81sNPZXbzFzjNvnx-upkhONBiUIik1pU"; 
+<script>
+// CRITICAL: Replace this key with a BRAND NEW one generated via "Create API key in new project"
+const apiKey = "AIzaSyBocZ4dzwuaIq8UajY2606SNZrmiU3TMu4"; 
 
-        let currentScenario = 'A';
-        let currentCellType = 'electrolytic';
+let currentScenario = 'A';
+let currentCellType = 'electrolytic';
 
         const scenarios = {
             A: {
@@ -300,68 +301,32 @@
             document.getElementById('guidance-content').classList.toggle('hidden');
         }
 
-        // The Smart Fallback Logic: Tests multiple API models until one succeeds.
-        async function fetchWithSmartFallback(payload, isImageTask = false) {
-            // Ordered list of models to try. 
-            // gemini-1.5-flash-8b and gemini-1.0-pro-vision are added for maximum compatibility with older keys.
-            const modelsToTry = [
-                "gemini-2.5-flash", 
-                "gemini-1.5-flash", 
-                "gemini-1.5-flash-latest", 
-                "gemini-1.5-flash-8b", 
-                "gemini-1.0-pro"
-            ];
+        // Direct fetch to the stable model with robust error handling
+        async function fetchGeminiAPI(payload) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
             
-            const imageModelsToTry = [
-                "gemini-2.5-flash", 
-                "gemini-1.5-flash", 
-                "gemini-1.5-flash-latest",
-                "gemini-1.5-flash-8b", 
-                "gemini-1.0-pro-vision"
-            ];
-
-            const targetModels = isImageTask ? imageModelsToTry : modelsToTry;
-            let lastErrorMsg = "";
-
-            for (const model of targetModels) {
-                try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-                    
-                    // The 1.0 legacy models don't support systemInstruction. We strip it if necessary.
-                    let currentPayload = JSON.parse(JSON.stringify(payload)); 
-                    if (model === "gemini-1.0-pro" || model === "gemini-1.0-pro-vision") {
-                        if (currentPayload.systemInstruction) {
-                            const sysText = currentPayload.systemInstruction.parts[0].text;
-                            currentPayload.contents[0].parts.unshift({ text: `[System Instructions: ${sysText}]\n\n` });
-                            delete currentPayload.systemInstruction;
-                        }
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    const errorMsg = result.error?.message || `HTTP ${response.status}`;
+                    // If the specific "model not found" error occurs, give the exact instruction to fix it.
+                    if (errorMsg.includes("is not found") || errorMsg.includes("API version v1beta")) {
+                        throw new Error("Your API key is active, but the Generative Language API is not enabled for it. Please go to aistudio.google.com, click 'Create API key', and select 'Create API key in NEW project'.");
                     }
-
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(currentPayload)
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (response.ok) {
-                        return result; // Success! Return immediately.
-                    } else {
-                        lastErrorMsg = result.error?.message || `HTTP ${response.status}`;
-                        console.warn(`Model ${model} rejected:`, lastErrorMsg);
-                        
-                        // If it's an explicit API key invalid error, don't bother trying other models
-                        if (lastErrorMsg.includes("API key not valid")) {
-                            throw new Error("Your API key is invalid. Please generate a new one in Google AI Studio.");
-                        }
-                    }
-                } catch (err) {
-                    lastErrorMsg = err.message;
-                    if (err.message.includes("API key is invalid")) throw err;
+                    throw new Error(errorMsg);
                 }
+                
+                return result;
+            } catch (err) {
+                throw err;
             }
-            throw new Error(`All available AI models failed. Last error: ${lastErrorMsg}`);
         }
 
         async function handleImageUpload(e) {
@@ -386,7 +351,7 @@
                         }]
                     };
                     
-                    const result = await fetchWithSmartFallback(payload, true);
+                    const result = await fetchGeminiAPI(payload);
                     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (text) {
                         const textarea = document.getElementById('userInput');
@@ -394,7 +359,7 @@
                     }
                 } catch (err) { 
                     console.error("Transcription Error: ", err); 
-                    alert(`Transcription failed: ${err.message}\n\nPlease check your Google AI Studio account.`);
+                    alert(`Transcription failed:\n\n${err.message}`);
                 } finally {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
@@ -416,12 +381,12 @@
                     systemInstruction: { parts: [{ text: "Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging." }] }
                 };
 
-                const result = await fetchWithSmartFallback(payload, false);
+                const result = await fetchGeminiAPI(payload);
                 document.getElementById('feedbackContent').innerText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
-                document.getElementById('feedbackContent').innerText = `API Error: ${err.message}\n\nPlease verify that your API key is active.`;
+                document.getElementById('feedbackContent').innerText = `API Error:\n${err.message}\n\nIf you generated the key in an existing project, try generating one in a "New Project".`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
