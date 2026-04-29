@@ -302,10 +302,9 @@
 
         // ==========================================
         // INDESTRUCTIBLE RAW FETCH LOOP
-        // Handles 503s with retries, and skips 404s to explicit versions
+        // Handles 503s with retries, 429s for quota, and skips 404s
         // ==========================================
         async function generateContentWithRetry(promptText, imageBase64 = null, imageMimeType = null) {
-            // Priority list of models to try. We use explicit versions (001) to prevent 404 aliasing bugs.
             const modelsToTry = [
                 "gemini-2.5-flash",
                 "gemini-2.0-flash-001",
@@ -315,7 +314,7 @@
             let lastErrorMsg = "";
 
             for (const model of modelsToTry) {
-                let retries = 2; // Allow 2 retries per model if we hit a 503 Traffic Spike
+                let retries = 2;
 
                 while (retries > 0) {
                     try {
@@ -346,29 +345,35 @@
 
                         const errorMsg = result.error?.message || `HTTP ${response.status}`;
                         lastErrorMsg = `[${model}] Error: ${errorMsg}`;
-                        console.warn(lastErrorMsg);
-
-                        if (response.status === 503) {
+                        
+                        // Handle Specific Server Status Codes
+                        if (response.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("quota")) {
+                            // User hit the 15 requests per minute limit. Throw friendly message immediately and stop looping.
+                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.\n\nPlease wait about 60 seconds and try again.");
+                        } else if (response.status === 503) {
                             console.log(`Traffic spike on ${model}. Retrying in 2 seconds...`);
                             await new Promise(resolve => setTimeout(resolve, 2000));
                             retries--;
-                            continue; // Try the exact same model again
+                            continue;
                         } else if (response.status === 404) {
-                            break; // Model not found on this endpoint. Move immediately to the next model.
+                            break; // Skip to next model
                         } else {
-                            break; // Other error (e.g., 400 Bad Request). Move to the next model.
+                            break; // Skip to next model
                         }
 
                     } catch (e) {
+                        // If it's our friendly quota error, pass it straight through
+                        if (e.message.includes("Too many students")) {
+                            throw e;
+                        }
                         lastErrorMsg = `[${model}] Network/Fetch Error: ${e.message}`;
                         console.error(lastErrorMsg);
-                        break; // Move to next model on hard network error
+                        break; 
                     }
                 }
             }
             
-            // If the loop finishes and nothing returned successfully
-            throw new Error(`All fallback attempts failed.\nLast Error Details: ${lastErrorMsg}`);
+            throw new Error(lastErrorMsg);
         }
 
         async function handleImageUpload(e) {
@@ -394,7 +399,7 @@
                     }
                 } catch (err) { 
                     console.error(err);
-                    document.getElementById('feedbackContent').innerText = `IMAGE UPLOAD FAILED\n\n${err.message}`;
+                    document.getElementById('feedbackContent').innerText = `UPLOAD PAUSED\n\n${err.message}`;
                     document.getElementById('feedbackBox').classList.remove('hidden');
                     document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
                 } finally {
@@ -413,7 +418,6 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                // Classic Combined Prompt to avoid "System Instruction" compatibility issues
                 const combinedPrompt = `You are an Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging.
 
                 Student Report:
@@ -430,7 +434,7 @@
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
                 console.error(err);
-                document.getElementById('feedbackContent').innerText = `MARKING FAILED\n\n${err.message}\n\nPlease wait a moment and try clicking Mark Report again.`;
+                document.getElementById('feedbackContent').innerText = `MARKING PAUSED\n\n${err.message}`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
