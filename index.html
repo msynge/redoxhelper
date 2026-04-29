@@ -158,7 +158,6 @@
     </div>
 
     <script>
-        // CRITICAL: Replace this key with a BRAND NEW one generated via "Create API key in new project"
         const apiKey = "AIzaSyAFXCGQRbWHt2zcXaXK3sv9466QhEnBJqU"; 
 
         let currentScenario = 'A';
@@ -301,27 +300,43 @@
             document.getElementById('guidance-content').classList.toggle('hidden');
         }
 
-        // Updated to use the stable v1 endpoint instead of v1beta
-        async function fetchGeminiAPI(payload) {
-            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        // Robust API handler with automatic fallback to universally supported baseline models
+        async function fetchGeminiAPI(payload, isImage = false) {
+            // Priority: Try 1.5-flash. If the key is restricted, silently fallback to 1.0-pro (or 1.0-pro-vision for images)
+            const models = isImage 
+                ? ['gemini-1.5-flash', 'gemini-1.0-pro-vision-latest'] 
+                : ['gemini-1.5-flash', 'gemini-1.0-pro'];
             
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+            let lastError;
+
+            for (const model of models) {
+                // Using v1beta to ensure the classic vision model functions correctly if we need the fallback
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
                 
-                const result = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(result.error?.message || `HTTP ${response.status}`);
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        return result; // It worked! Return the AI response.
+                    } else {
+                        // Keep track of the error but immediately try the next model in the list
+                        lastError = new Error(result.error?.message || `HTTP ${response.status}`);
+                        console.log(`Model ${model} unavailable for this key. Trying fallback...`);
+                    }
+                } catch (err) {
+                    lastError = err;
+                    console.log(`Network error connecting to ${model}.`);
                 }
-                
-                return result;
-            } catch (err) {
-                throw err;
             }
+            
+            // If even the universal baseline models fail, bubble up the error to the user interface
+            throw lastError || new Error("Unable to connect to Google AI.");
         }
 
         async function handleImageUpload(e) {
@@ -337,7 +352,7 @@
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
-                    // Stripped down, classic multimodal payload
+                    // Classic payload (no system instructions to guarantee compatibility)
                     const payload = {
                         contents: [{
                             parts: [
@@ -347,7 +362,7 @@
                         }]
                     };
                     
-                    const result = await fetchGeminiAPI(payload);
+                    const result = await fetchGeminiAPI(payload, true);
                     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (text) {
                         const textarea = document.getElementById('userInput');
@@ -372,8 +387,7 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                // WORKAROUND: Classic prompting. Bundling the system instructions directly into the main user text 
-                // to completely bypass the "systemInstruction not supported" API block.
+                // Classic Prompting: Combining instructions and student text to avoid "systemInstruction" blocks
                 const combinedPrompt = `You are an Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging.
 
                 Student Report:
@@ -387,7 +401,7 @@
                     contents: [{ parts: [{ text: combinedPrompt }] }]
                 };
 
-                const result = await fetchGeminiAPI(payload);
+                const result = await fetchGeminiAPI(payload, false);
                 document.getElementById('feedbackContent').innerText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
