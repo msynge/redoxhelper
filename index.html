@@ -84,19 +84,39 @@
                         <i data-lucide="chevron-down" id="guidance-icon" class="w-4 h-4"></i>
                     </button>
                     <div id="guidance-content" class="p-4 bg-white border-t border-red-200 hidden text-[13px] text-slate-800 leading-relaxed">
-                        <p class="font-bold mb-2 text-red-800">For Excellence:</p>
+                        <p class="font-bold mb-2 text-red-800">In your report:</p>
                         <ul class="space-y-3">
                             <li class="flex gap-2">
                                 <span class="text-red-500 font-bold">•</span>
-                                <span>Clearly link <strong>observations</strong> to the <strong>species</strong> formed (e.g., "The pink solid is Cu").</span>
+                                <span>Identify what has been oxidised and reduced for both cell types, support with descriptions of either loss / gain of electrons including the number of electrons or oxidation number changes linked to species.</span>
                             </li>
                             <li class="flex gap-2">
                                 <span class="text-red-500 font-bold">•</span>
-                                <span>Calculate <strong>E<sup>0</sup><sub>cell</sub></strong> and use it to justify <strong>spontaneity</strong>.</span>
+                                <span>Discuss the production or use of electrical energy in each cell type.</span>
                             </li>
                             <li class="flex gap-2">
                                 <span class="text-red-500 font-bold">•</span>
-                                <span>Justify redox using <strong>oxidation numbers</strong> OR <strong>electron transfer</strong>.</span>
+                                <span>Write balanced half equations for both cell types and link these to observations.</span>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="text-red-500 font-bold">•</span>
+                                <span>Write a fully balanced equation for both cell types.</span>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="text-red-500 font-bold">•</span>
+                                <span>Use reduction potentials to explain your choice of oxidation-reduction processes.</span>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="text-red-500 font-bold">•</span>
+                                <span>Calculate cell potentials (E<sup>0</sup><sub>cell</sub>) using data provided to predict spontaneity of reaction.</span>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="text-red-500 font-bold">•</span>
+                                <span>Justify the spontaneity or non-spontaneous nature of each cell with reference to the strength of the oxidant and how this links to the production or use of energy in each cell type.</span>
+                            </li>
+                            <li class="flex gap-2">
+                                <span class="text-red-500 font-bold">•</span>
+                                <span>You may also wish to list the important similarities and differences of each cell type.</span>
                             </li>
                         </ul>
                     </div>
@@ -129,18 +149,20 @@
                 </div>
 
                 <div id="feedbackBox" class="hidden animate-in fade-in slide-in-from-top-2">
-                    <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
-                        <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
-                    </div>
-                </div>
+            <div class="border-2 border-blue-100 bg-white rounded-xl shadow-lg overflow-hidden">
+                <div id="feedbackContent" class="p-5 text-slate-700 whitespace-pre-wrap text-sm leading-relaxed"></div>
             </div>
         </div>
     </div>
+</div>
+</div>
 
-    <script>
-        const apiKey = "AIzaSyDZvaTK8l9EaxYWg3bkHzYPPuK3sAQa_ZU"; 
-        let currentScenario = 'A';
-        let currentCellType = 'electrolytic';
+<script>
+// Update this variable with the BRAND NEW key you generate in Google AI Studio
+const apiKey = "AIzaSyA81sNPZXbzFzjNvnx-upkhONBiUIik1pU"; 
+
+let currentScenario = 'A';
+let currentCellType = 'electrolytic';
 
         const scenarios = {
             A: {
@@ -221,12 +243,11 @@
             if (window.lucide) window.lucide.createIcons();
         }
 
-        // Use the browser's native text-to-speech for GitHub compatibility
         function playGuidance() {
             if ('speechSynthesis' in window) {
-                const text = "For Excellence, clearly link observations to the species formed. Calculate the E zero cell and use it to justify spontaneity. Also, justify redox using oxidation numbers or electron transfer.";
+                const text = "In your report, identify what has been oxidised and reduced, and discuss the electrical energy. Write balanced half and full equations, and use reduction potentials to predict and justify spontaneity.";
                 const utterance = new SpeechSynthesisUtterance(text);
-                utterance.rate = 0.95; // Slightly slower, natural pacing
+                utterance.rate = 0.95;
                 window.speechSynthesis.speak(utterance);
             } else {
                 alert("Text-to-speech is not supported in this browser.");
@@ -309,8 +330,7 @@
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
-                    // Changed to gemini-1.5-flash-latest to ensure it correctly maps for standard API keys outside preview environments.
-                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -329,7 +349,7 @@
                     }
                 } catch (err) { 
                     console.error("Transcription Error: ", err); 
-                    alert(`Transcription failed: ${err.message}`);
+                    alert(`Transcription failed: ${err.message}\n\nPlease check your Google AI Studio API key.`);
                 } finally {
                     btn.innerHTML = originalText;
                     btn.disabled = false;
@@ -346,8 +366,7 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                // Changed to gemini-1.5-flash-latest 
-                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
+                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
