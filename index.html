@@ -344,14 +344,14 @@
         }
 
         // ==========================================
-        // INDESTRUCTIBLE RAW FETCH LOOP
-        // Handles 503s with retries, 429s for quota, and skips 404s
+        // INDESTRUCTIBLE RAW FETCH LOOP - WITH SMARTER QUOTA DETECTION
         // ==========================================
         async function generateContentWithRetry(promptText, imageBase64 = null, imageMimeType = null) {
+            // Using the most stable standard models listed in your diagnostic
             const modelsToTry = [
                 "gemini-2.5-flash",
-                "gemini-2.0-flash-001",
-                "gemini-2.0-flash-lite-001"
+                "gemini-2.0-flash",
+                "gemini-2.5-pro"
             ];
 
             let lastErrorMsg = "";
@@ -389,23 +389,33 @@
                         const errorMsg = result.error?.message || `HTTP ${response.status}`;
                         lastErrorMsg = `[${model}] Error: ${errorMsg}`;
                         
-                        // Handle Specific Server Status Codes
-                        if (response.status === 429 || errorMsg.includes("Quota exceeded") || errorMsg.includes("quota")) {
-                            // User hit the 15 requests per minute limit. Throw friendly message immediately and stop looping.
-                            throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.\n\nPlease wait about 60 seconds and try again.");
+                        // Handle Specific Server Status Codes & Quota Issues
+                        if (response.status === 429 || errorMsg.toLowerCase().includes("quota")) {
+                            
+                            // FALSE ALARM CHECK: 
+                            // Google sets limit:0 on certain regions/models on the Free Tier.
+                            // This is a hard block, not a rate limit. We must ignore it and skip to the next model.
+                            if (errorMsg.includes("limit: 0")) {
+                                console.warn(`Model ${model} is disabled on the free tier (limit: 0). Skipping to next fallback model.`);
+                                break; // Breaks out of the retry loop, moves to the next model in the list
+                            } else {
+                                // This is a legitimate 15 requests per minute limit hit
+                                throw new Error("Too many students are checking their work right now! The free classroom AI limit has been temporarily reached.\n\nPlease wait about 60 seconds and try again.");
+                            }
+                            
                         } else if (response.status === 503) {
                             console.log(`Traffic spike on ${model}. Retrying in 2 seconds...`);
                             await new Promise(resolve => setTimeout(resolve, 2000));
                             retries--;
                             continue;
-                        } else if (response.status === 404) {
+                        } else if (response.status === 404 || response.status === 400) {
                             break; // Skip to next model
                         } else {
                             break; // Skip to next model
                         }
 
                     } catch (e) {
-                        // If it's our friendly quota error, pass it straight through
+                        // Pass our friendly classroom quota error straight through to the student
                         if (e.message.includes("Too many students")) {
                             throw e;
                         }
@@ -439,6 +449,7 @@
                     if (text) {
                         const textarea = document.getElementById('userInput');
                         textarea.value += (textarea.value ? "\n\n" : "") + text.trim();
+                        saveCurrentDraft(); // Auto-save after upload
                     }
                 } catch (err) { 
                     console.error(err);
