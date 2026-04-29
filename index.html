@@ -221,6 +221,18 @@
             if (window.lucide) window.lucide.createIcons();
         }
 
+        // Use the browser's native text-to-speech for GitHub compatibility
+        function playGuidance() {
+            if ('speechSynthesis' in window) {
+                const text = "For Excellence, clearly link observations to the species formed. Calculate the E zero cell and use it to justify spontaneity. Also, justify redox using oxidation numbers or electron transfer.";
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 0.95; // Slightly slower, natural pacing
+                window.speechSynthesis.speak(utterance);
+            } else {
+                alert("Text-to-speech is not supported in this browser.");
+            }
+        }
+
         function setScenario(id) {
             currentScenario = id;
             updateUI();
@@ -297,7 +309,8 @@
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
-                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    // Changed to gemini-1.5-flash-latest to ensure it correctly maps for standard API keys outside preview environments.
+                    const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -333,7 +346,8 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
-                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                // Changed to gemini-1.5-flash-latest 
+                const result = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
