@@ -344,10 +344,9 @@
         }
 
         // ==========================================
-        // SINGLE MODEL FETCH - GEMINI 2.5 FLASH
+        // SINGLE MODEL FETCH - RAW ERROR DUMP
         // ==========================================
         async function generateContent(promptText, imageBase64 = null, imageMimeType = null) {
-            // Updated to explicitly use gemini-2.5-flash as your key supports it and 1.5-flash returned 404
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
             
             let parts = [{ text: promptText }];
@@ -359,51 +358,27 @@
 
             const payload = { contents: [{ parts: parts }] };
 
-            let retries = 2; // Allow 2 retries on the exact same model if server is busy
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
 
-            while (retries >= 0) {
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                const result = await response.json();
 
-                    const result = await response.json();
-
-                    if (response.ok) {
-                        const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (generatedText) return generatedText;
-                        throw new Error("Received empty response from AI.");
-                    }
-
-                    // True Rate Limit / Quota Exceeded (429)
-                    if (response.status === 429) {
-                        throw new Error("<b>API QUOTA EXCEEDED:</b> Your personal API key has hit Google's strict free-tier limit.<br><br><b>What happened:</b> Because you tested on a hotspot and still got this error, your account's daily free credits are empty, or it temporarily locked you out for sending too many requests in a short time.<br><br><b>The Fix:</b> Wait a few minutes. If it persists, generate a brand new API key on a different Google account.");
-                    }
-                    
-                    // Server Busy. Wait 2 seconds and try again if we have retries left.
-                    if (response.status === 503 && retries > 0) {
-                        console.log("Server busy, retrying in 2 seconds...");
-                        await new Promise(r => setTimeout(r, 2000));
-                        retries--;
-                        continue;
-                    }
-
-                    // For any other error (like 403 Forbidden), or if we are out of retries
-                    const errorMsg = result.error?.message || `HTTP ${response.status}`;
-                    throw new Error(`Google AI Error: ${errorMsg}`);
-
-                } catch (e) {
-                    // If it is our friendly custom error, throw it directly
-                    if (e.message.includes("API QUOTA EXCEEDED") || retries === 0) {
-                        throw e;
-                    }
-                    
-                    // On a random network error, pause and retry
-                    await new Promise(r => setTimeout(r, 2000));
-                    retries--;
+                if (response.ok) {
+                    const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (generatedText) return generatedText;
+                    throw new Error("Received empty response from AI.");
                 }
+
+                // Dump the EXACT error from Google's servers so we can see the naked truth
+                const errorMsg = result.error?.message || JSON.stringify(result);
+                throw new Error(`<b>Google API Rejected Request (HTTP ${response.status})</b><br><br><b>Exact Error:</b><br><span style="font-family: monospace; font-size: 11px; background: #f1f5f9; padding: 10px; display: block; border-radius: 6px; margin-top: 5px;">${errorMsg}</span>`);
+
+            } catch (e) {
+                throw e; // Pass it straight to the UI
             }
         }
 
@@ -431,7 +406,7 @@
                     }
                 } catch (err) { 
                     console.error(err);
-                    document.getElementById('feedbackContent').innerHTML = `<strong>UPLOAD FAILED</strong><br><br>${err.message}`;
+                    document.getElementById('feedbackContent').innerHTML = err.message;
                     document.getElementById('feedbackBox').classList.remove('hidden');
                     document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
                 } finally {
@@ -471,7 +446,7 @@
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
                 console.error(err);
-                document.getElementById('feedbackContent').innerHTML = `<strong>MARKING FAILED</strong><br><br>${err.message}`;
+                document.getElementById('feedbackContent').innerHTML = err.message;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
