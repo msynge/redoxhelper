@@ -301,9 +301,9 @@
             document.getElementById('guidance-content').classList.toggle('hidden');
         }
 
-        // Direct fetch to the stable model with robust error handling
+        // Updated to use the stable v1 endpoint instead of v1beta
         async function fetchGeminiAPI(payload) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
             
             try {
                 const response = await fetch(url, {
@@ -315,12 +315,7 @@
                 const result = await response.json();
                 
                 if (!response.ok) {
-                    const errorMsg = result.error?.message || `HTTP ${response.status}`;
-                    // If the specific "model not found" error occurs, give the exact instruction to fix it.
-                    if (errorMsg.includes("is not found") || errorMsg.includes("API version v1beta")) {
-                        throw new Error("Your API key is active, but the Generative Language API is not enabled for it. Please go to aistudio.google.com, click 'Create API key', and select 'Create API key in NEW project'.");
-                    }
-                    throw new Error(errorMsg);
+                    throw new Error(result.error?.message || `HTTP ${response.status}`);
                 }
                 
                 return result;
@@ -342,6 +337,7 @@
             reader.onloadend = async () => {
                 const base64Data = reader.result.split(',')[1];
                 try {
+                    // Stripped down, classic multimodal payload
                     const payload = {
                         contents: [{
                             parts: [
@@ -376,9 +372,19 @@
             btn.innerText = 'Analyzing...';
             btn.disabled = true;
             try {
+                // WORKAROUND: Classic prompting. Bundling the system instructions directly into the main user text 
+                // to completely bypass the "systemInstruction not supported" API block.
+                const combinedPrompt = `You are an Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging.
+
+                Student Report:
+                ${text}
+
+                Scenario Context:
+                Type: ${currentCellType} Cell
+                Prompt: ${scenarios[currentScenario][currentCellType].prompt}`;
+
                 const payload = {
-                    contents: [{ parts: [{ text: `Student Report: ${text}\n\nScenario: ${currentScenario} ${currentCellType}\nContext: ${scenarios[currentScenario][currentCellType].prompt}` }] }],
-                    systemInstruction: { parts: [{ text: "Expert NCEA Level 3 Chemistry tutor. Provide a Grade (A/M/E) based on AS 91393. Check for half-equations, E0 calculations, and linking observations to species. Be encouraging." }] }
+                    contents: [{ parts: [{ text: combinedPrompt }] }]
                 };
 
                 const result = await fetchGeminiAPI(payload);
@@ -386,7 +392,7 @@
                 document.getElementById('feedbackBox').classList.remove('hidden');
                 document.getElementById('feedbackBox').scrollIntoView({ behavior: 'smooth' });
             } catch (err) {
-                document.getElementById('feedbackContent').innerText = `API Error:\n${err.message}\n\nIf you generated the key in an existing project, try generating one in a "New Project".`;
+                document.getElementById('feedbackContent').innerText = `API Error:\n${err.message}`;
                 document.getElementById('feedbackBox').classList.remove('hidden');
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
