@@ -344,11 +344,11 @@
         }
 
         // ==========================================
-        // SINGLE MODEL FETCH - NO FALLBACK LOOPS
+        // SINGLE MODEL FETCH - GEMINI 1.5 FLASH (MAX STABILITY)
         // ==========================================
         async function generateContent(promptText, imageBase64 = null, imageMimeType = null) {
-            // We use ONLY gemini-2.5-flash to eliminate the limit:0 bug caused by fallbacks
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+            // We use ONLY gemini-1.5-flash. It has the largest free tier limit and prevents the limit:0 bug on newer models.
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
             
             let parts = [{ text: promptText }];
             if (imageBase64 && imageMimeType) {
@@ -377,9 +377,9 @@
                         throw new Error("Received empty response from AI.");
                     }
 
-                    // True Rate Limit (15 requests per minute)
+                    // True Rate Limit / Quota Exceeded (429)
                     if (response.status === 429) {
-                        throw new Error("<b>NETWORK BLOCKED:</b> The free Google AI limit has been reached.<br><br><b>SCHOOL NETWORK WARNING:</b> If you are on school Wi-Fi, the entire school shares one IP address. Google sees the whole school as 'one user' and blocks it instantly.<br><br><b>Quick Fix:</b> Connect to a mobile hotspot and try again.");
+                        throw new Error("<b>API QUOTA EXCEEDED:</b> Your personal API key has hit Google's strict free-tier limit.<br><br><b>What happened:</b> Because you tested on a hotspot and still got this error, your account's daily free credits are empty, or it temporarily locked you out for sending too many requests in a short time.<br><br><b>The Fix:</b> Wait a few minutes. If it persists, generate a brand new API key on a different Google account.");
                     }
                     
                     // Server Busy. Wait 2 seconds and try again if we have retries left.
@@ -392,11 +392,11 @@
 
                     // For any other error (like 403 Forbidden), or if we are out of retries
                     const errorMsg = result.error?.message || `HTTP ${response.status}`;
-                    throw new Error(`Google AI Error: ${errorMsg}<br><br><b>SCHOOL NETWORK WARNING:</b> School firewalls often block AI traffic. To test if this is the issue, connect your device to a mobile phone hotspot and try again.`);
+                    throw new Error(`Google AI Error: ${errorMsg}`);
 
                 } catch (e) {
                     // If it is our friendly custom error, throw it directly
-                    if (e.message.includes("SCHOOL NETWORK WARNING") || retries === 0) {
+                    if (e.message.includes("API QUOTA EXCEEDED") || retries === 0) {
                         throw e;
                     }
                     
