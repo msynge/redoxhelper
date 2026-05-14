@@ -343,7 +343,7 @@
                 alert("Error: " + e.message); 
             } finally { 
                 btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> Mark Report'; 
-                lucide.createIcons();
+                if (window.lucide) window.lucide.createIcons();
             }
         }
 
@@ -365,7 +365,7 @@
 
         window.onload = () => { 
             updateUI(); 
-            lucide.createIcons(); 
+            if (window.lucide) window.lucide.createIcons(); 
         };
     </script>
 </body>
